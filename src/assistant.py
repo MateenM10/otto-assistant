@@ -1,9 +1,12 @@
+import json
 import requests
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS
+from .audit import log_tool_call
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.2:3b"
 MAX_RESPONSE_TOKENS = 150  # keep replies short so they're quick to speak
+
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
 directories, write files, and run shell commands.
@@ -70,11 +73,11 @@ class Assistant:
             # loop back around and call Ollama again with the tool results
 
     def _run_tool(self, name: str, raw_arguments) -> str:
-        import json
-
         func = TOOL_FUNCTIONS.get(name)
         if func is None:
-            return f"Error: unknown tool '{name}'"
+            result = f"Error: unknown tool '{name}'"
+            log_tool_call(name, {}, result, allowed=False)
+            return result
 
         if isinstance(raw_arguments, str):
             try:
@@ -85,6 +88,10 @@ class Assistant:
             args = raw_arguments or {}
 
         try:
-            return str(func(**args))
+            result = str(func(**args))
+            log_tool_call(name, args, result, allowed=True)
+            return result
         except Exception as e:
-            return f"Error running tool '{name}': {e}"
+            result = f"Error running tool '{name}': {e}"
+            log_tool_call(name, args, result, allowed=False)
+            return result
