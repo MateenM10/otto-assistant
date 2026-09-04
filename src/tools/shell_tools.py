@@ -3,7 +3,9 @@ Tool for running shell commands.
 
 This is the most powerful (and dangerous) tool in Phase 1 — it can do
 anything your shell can do. There's no permission system yet (that's
-Phase 3), so for now we ask for confirmation on every call.
+Phase 3), so for now we ask for confirmation on every call. Treat this
+as a placeholder that WILL need real guardrails before you give it
+broader access.
 """
 
 import subprocess

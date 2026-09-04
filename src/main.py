@@ -1,16 +1,10 @@
-"""
-Entry point. Run with: python -m src.main
-
-Push-to-talk: press Enter to start speaking, or type a message
-directly instead. Type 'exit' to quit.
-"""
-
 from src.assistant import Assistant
 from src.voice import listen
+from src.speech import speak
 
 
 def main():
-    print("Jarvis (Phase 2 - voice input). Press Enter to talk, or type. Type 'exit' to quit.\n")
+    print("Jarvis (Phase 2 - voice input/output). Press Enter to talk, or type. Type 'exit' to quit.\n")
     assistant = Assistant()
 
     while True:
@@ -36,6 +30,7 @@ def main():
 
         reply = assistant.send(user_input)
         print(f"\nJarvis: {reply}\n")
+        speak(reply)
 
 
 if __name__ == "__main__":
