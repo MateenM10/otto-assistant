@@ -1,10 +1,18 @@
+"""
+Entry point. Run with: python -m src.main
+
+Push-to-talk: press Enter to start speaking, press Enter again to
+stop. Or type a message directly instead. Jarvis speaks its replies
+out loud. Type 'dry run' to toggle dry-run mode. Type 'exit' to quit.
+"""
+
 from src.assistant import Assistant
 from src.voice import listen
 from src.speech import speak
 
 
 def main():
-    print("Jarvis (Phase 2 - voice input/output). Press Enter to talk, or type. Type 'exit' to quit.\n")
+    print("Jarvis (Phase 3 - permissions). Press Enter to talk, or type. Type 'exit' to quit.\n")
     assistant = Assistant()
 
     while True:
@@ -17,6 +25,10 @@ def main():
         if typed.lower() in ("exit", "quit"):
             print("Goodbye.")
             break
+
+        if typed.lower() == "dry run":
+            print(assistant.toggle_dry_run())
+            continue
 
         if typed == "":
             # Empty input means they just pressed Enter -> start listening

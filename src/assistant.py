@@ -1,10 +1,11 @@
 """
 The core tool-calling loop, running against a local Ollama model.
 
-Permission is now enforced centrally here, based on each tool's trust
+Permission is enforced centrally here, based on each tool's trust
 level (see TOOL_TRUST in src/tools/__init__.py) — "safe" tools run
-instantly, "confirm" tools ask the user first. Every call, allowed or
-not, gets recorded to the audit log.
+instantly, "confirm" tools ask the user first (unless dry-run mode
+is on, in which case they're only previewed, never actually run).
+Every call, allowed or not, gets recorded to the audit log.
 """
 
 import json
@@ -44,6 +45,11 @@ class Assistant:
     def __init__(self):
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.ollama_tools = [_to_ollama_tool(s) for s in TOOL_SCHEMAS]
+        self.dry_run = False
+
+    def toggle_dry_run(self) -> str:
+        self.dry_run = not self.dry_run
+        return f"Dry-run mode is now {'ON' if self.dry_run else 'OFF'}"
 
     def send(self, user_input: str) -> str:
         self.messages.append({"role": "user", "content": user_input})
@@ -98,8 +104,15 @@ class Assistant:
 
         # --- Centralized permission check ---
         trust_level = TOOL_TRUST.get(name, "confirm")  # unknown tools default to safe-side: confirm
+
         if trust_level == "confirm":
             print(f"\n[Jarvis wants to use]: {name}({args})")
+
+            if self.dry_run:
+                result = f"[DRY RUN] Would run {name}({args}), but dry-run mode is on — nothing actually happened."
+                log_tool_call(name, args, result, allowed=False)
+                return result
+
             confirmation = input("Allow this? (y/n): ").strip().lower()
             if confirmation != "y":
                 result = "User declined to run this tool."
