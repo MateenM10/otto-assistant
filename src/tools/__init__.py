@@ -23,3 +23,13 @@ TOOL_SCHEMAS = [
     WRITE_FILE_SCHEMA,
     RUN_SHELL_COMMAND_SCHEMA,
 ]
+
+# Trust tiers: "safe" tools run instantly, "confirm" tools always ask
+# the user first. This is the ONE place that decides which is which —
+# individual tool files no longer handle their own confirmation.
+TOOL_TRUST = {
+    "read_file": "safe",
+    "list_directory": "safe",
+    "write_file": "confirm",
+    "run_shell_command": "confirm",
+}
