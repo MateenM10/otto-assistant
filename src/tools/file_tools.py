@@ -2,6 +2,7 @@ import os
 
 MAX_FILE_CHARS = 8000  # keep responses small; avoid dumping huge files
 
+
 def read_file(path: str) -> str:
     """Read a text file and return its contents (truncated if large)."""
     try:
@@ -40,6 +41,24 @@ def list_directory(path: str = ".") -> str:
         return f"Error listing directory: {e}"
 
 
+def write_file(path: str, content: str) -> str:
+    """Write text content to a file, asking the user to confirm first."""
+    print(f"\n[Jarvis wants to write to]: {path}")
+    preview = content if len(content) <= 200 else content[:200] + "...[truncated]"
+    print(f"Content preview:\n{preview}")
+    confirmation = input("Allow this? (y/n): ").strip().lower()
+    if confirmation != "y":
+        return "User declined to write this file."
+
+    try:
+        expanded = os.path.expanduser(path)
+        with open(expanded, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"Successfully wrote {len(content)} characters to '{path}'"
+    except Exception as e:
+        return f"Error writing file: {e}"
+
+
 READ_FILE_SCHEMA = {
     "name": "read_file",
     "description": "Read the contents of a text file at a given path.",
@@ -67,5 +86,24 @@ LIST_DIRECTORY_SCHEMA = {
             }
         },
         "required": [],
+    },
+}
+
+WRITE_FILE_SCHEMA = {
+    "name": "write_file",
+    "description": "Write text content to a file at the given path, creating or overwriting it. The user will be asked to confirm before anything is written.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Path to the file to write, absolute or relative to the current working directory.",
+            },
+            "content": {
+                "type": "string",
+                "description": "The text content to write into the file.",
+            },
+        },
+        "required": ["path", "content"],
     },
 }
