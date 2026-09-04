@@ -1,0 +1,16 @@
+# Environment
+.env
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/settings.json
+
+# Logs (Phase 3+)
+audit_log.jsonl
