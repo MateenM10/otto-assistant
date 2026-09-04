@@ -3,7 +3,7 @@ from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.2:3b"
-
+MAX_RESPONSE_TOKENS = 150  # keep replies short so they're quick to speak
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
 directories, write files, and run shell commands.
@@ -12,6 +12,7 @@ IMPORTANT: When the user asks about files, directories, or anything
 you could check with a tool, you MUST call the tool yourself and use
 its real result. Never just explain what command they could run —
 actually run it using your tools and give them the real answer."""
+
 
 def _to_ollama_tool(schema: dict) -> dict:
     """Our tool files describe tools in Claude's shape. Ollama wants
@@ -42,6 +43,7 @@ class Assistant:
                     "model": MODEL,
                     "messages": self.messages,
                     "tools": self.ollama_tools,
+                    "options": {"num_predict": MAX_RESPONSE_TOKENS},
                 },
             )
             data = response.json()
@@ -74,8 +76,6 @@ class Assistant:
         if func is None:
             return f"Error: unknown tool '{name}'"
 
-        # Ollama sometimes sends arguments as a JSON string, sometimes
-        # already as a dict — handle both
         if isinstance(raw_arguments, str):
             try:
                 args = json.loads(raw_arguments)
