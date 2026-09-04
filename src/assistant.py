@@ -1,6 +1,15 @@
+"""
+The core tool-calling loop, running against a local Ollama model.
+
+Permission is now enforced centrally here, based on each tool's trust
+level (see TOOL_TRUST in src/tools/__init__.py) — "safe" tools run
+instantly, "confirm" tools ask the user first. Every call, allowed or
+not, gets recorded to the audit log.
+"""
+
 import json
 import requests
-from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS
+from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS, TOOL_TRUST
 from .audit import log_tool_call
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
@@ -86,6 +95,16 @@ class Assistant:
                 args = {}
         else:
             args = raw_arguments or {}
+
+        # --- Centralized permission check ---
+        trust_level = TOOL_TRUST.get(name, "confirm")  # unknown tools default to safe-side: confirm
+        if trust_level == "confirm":
+            print(f"\n[Jarvis wants to use]: {name}({args})")
+            confirmation = input("Allow this? (y/n): ").strip().lower()
+            if confirmation != "y":
+                result = "User declined to run this tool."
+                log_tool_call(name, args, result, allowed=False)
+                return result
 
         try:
             result = str(func(**args))
