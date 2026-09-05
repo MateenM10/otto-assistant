@@ -15,16 +15,26 @@
   body {
     background: radial-gradient(circle at center, #12212f 0%, var(--bg) 70%);
     height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     font-family: "SF Mono", Menlo, monospace;
     color: var(--glow);
     overflow: hidden;
+    display: grid;
+    grid-template-columns: 1fr 460px 1fr;
+    grid-template-rows: 1fr auto;
+    align-items: center;
+    gap: 20px;
+    padding: 30px;
   }
 
-  .reactor { position: relative; width: 420px; height: 420px; }
+  /* --- Reactor --- */
+  .reactor {
+    position: relative;
+    width: 420px;
+    height: 420px;
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
+  }
 
   .reactor svg {
     position: absolute;
@@ -69,7 +79,6 @@
     max-width: 220px;
   }
 
-  /* Gentle pulse on the innermost disc so it feels alive at rest */
   .pulse { animation: pulse 3s ease-in-out infinite; transform-origin: center; }
 
   @keyframes pulse {
@@ -77,18 +86,21 @@
     50%      { opacity: 0.9; }
   }
 
-  /* --- Tool activity feed --- */
-  .feed {
-    position: absolute;
-    right: 40px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 340px;
+  /* --- Side panels --- */
+  .panel {
+    grid-row: 1;
+    align-self: center;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
     font-size: 11px;
     line-height: 1.6;
   }
 
-  .feed-title {
+  .panel-conversation { grid-column: 1; }
+  .panel-feed { grid-column: 3; }
+
+  .panel-title {
     color: var(--glow);
     letter-spacing: 4px;
     font-size: 10px;
@@ -96,8 +108,33 @@
     opacity: 0.8;
     border-bottom: 1px solid var(--glow-dim);
     padding-bottom: 6px;
+    flex-shrink: 0;
   }
 
+  .panel-body {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--glow-dim) transparent;
+  }
+
+  .panel-empty { color: var(--glow-dim); opacity: 0.5; }
+
+  /* --- Conversation --- */
+  .turn { margin-bottom: 12px; }
+
+  .turn-role {
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--glow-dim);
+    margin-bottom: 3px;
+  }
+
+  .turn-text { color: #cfefff; white-space: pre-wrap; }
+  .turn.jarvis .turn-text { color: var(--glow); }
+  .turn.system .turn-text { color: #ffd166; }
+
+  /* --- Tool activity --- */
   .event {
     display: flex;
     gap: 8px;
@@ -122,10 +159,43 @@
     white-space: nowrap;
   }
 
-  .feed-empty { color: var(--glow-dim); opacity: 0.5; }
+  /* --- Input bar --- */
+  .input-bar {
+    grid-column: 2;
+    grid-row: 2;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  #input {
+    flex: 1;
+    background: rgba(53, 224, 240, 0.05);
+    border: 1px solid var(--glow-dim);
+    border-radius: 22px;
+    padding: 12px 20px;
+    color: var(--glow);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+  }
+
+  #input:focus {
+    border-color: var(--glow);
+    box-shadow: 0 0 12px rgba(53, 224, 240, 0.25);
+  }
+
+  #input::placeholder { color: var(--glow-dim); opacity: 0.7; }
 </style>
 </head>
 <body>
+
+  <div class="panel panel-conversation">
+    <div class="panel-title">CONVERSATION</div>
+    <div class="panel-body" id="messages">
+      <div class="panel-empty">say something</div>
+    </div>
+  </div>
 
   <div class="reactor">
 
@@ -179,29 +249,82 @@
 
   </div>
 
-  <div class="feed">
-    <div class="feed-title">TOOL ACTIVITY</div>
-    <div id="events"><div class="feed-empty">no activity yet</div></div>
+  <div class="panel panel-feed">
+    <div class="panel-title">TOOL ACTIVITY</div>
+    <div class="panel-body" id="events">
+      <div class="panel-empty">no activity yet</div>
+    </div>
+  </div>
+
+  <div class="input-bar">
+    <input id="input" type="text" placeholder="Type a message and press Enter…" autocomplete="off">
   </div>
 
   <script>
+    const input = document.getElementById("input");
+
+    // Escape anything coming from the server before putting it in the
+    // DOM — screen OCR and model output can contain angle brackets.
+    function escapeHtml(text) {
+      const div = document.createElement("div");
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function send(text) {
+      await fetch("/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text })
+      });
+    }
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const text = input.value.trim();
+      if (!text) return;
+      send(text);
+      input.value = "";
+    });
+
     function renderEvents(events) {
       const container = document.getElementById("events");
       if (!events || events.length === 0) {
-        container.innerHTML = '<div class="feed-empty">no activity yet</div>';
+        container.innerHTML = '<div class="panel-empty">no activity yet</div>';
         return;
       }
       container.innerHTML = events.map(e => `
         <div class="event ${e.outcome}">
-          <span class="event-time">${e.time}</span>
-          <span class="event-tool">${e.tool}</span>
-          <span class="event-args">${e.args}</span>
+          <span class="event-time">${escapeHtml(e.time)}</span>
+          <span class="event-tool">${escapeHtml(e.tool)}</span>
+          <span class="event-args">${escapeHtml(e.args)}</span>
         </div>
       `).join("");
     }
 
-    // Poll the Python server a few times a second so the status and
-    // activity feed reflect what the assistant is actually doing.
+    let lastMessageCount = 0;
+
+    function renderMessages(messages) {
+      const container = document.getElementById("messages");
+      if (!messages || messages.length === 0) {
+        container.innerHTML = '<div class="panel-empty">say something</div>';
+        return;
+      }
+      container.innerHTML = messages.map(m => `
+        <div class="turn ${m.role}">
+          <div class="turn-role">${escapeHtml(m.role)}</div>
+          <div class="turn-text">${escapeHtml(m.text)}</div>
+        </div>
+      `).join("");
+
+      // Only auto-scroll when something new arrived, so the user can
+      // scroll back through history without being yanked to the bottom.
+      if (messages.length !== lastMessageCount) {
+        container.scrollTop = container.scrollHeight;
+        lastMessageCount = messages.length;
+      }
+    }
+
     async function poll() {
       try {
         const res = await fetch("/status");
@@ -209,6 +332,7 @@
         document.getElementById("status").textContent =
           data.detail ? `${data.status} — ${data.detail}` : data.status;
         renderEvents(data.events);
+        renderMessages(data.messages);
       } catch (e) {
         document.getElementById("status").textContent = "disconnected";
       }
@@ -216,6 +340,7 @@
 
     setInterval(poll, 300);
     poll();
+    input.focus();
   </script>
 
 </body>

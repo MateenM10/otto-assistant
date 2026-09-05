@@ -1,3 +1,11 @@
+"""
+Central tool registry.
+
+To add a new tool: write the function + schema in its own file, then
+register it here in all three collections below. assistant.py only
+talks to this registry — it never imports individual tool modules.
+"""
+
 from .vision_tools import read_screen, READ_SCREEN_SCHEMA
 from .memory_tools import (
     remember,
@@ -15,7 +23,12 @@ from .file_tools import (
     LIST_DIRECTORY_SCHEMA,
     WRITE_FILE_SCHEMA,
 )
-from .shell_tools import run_shell_command, RUN_SHELL_COMMAND_SCHEMA
+from .shell_tools import (
+    run_shell_command,
+    get_current_datetime,
+    RUN_SHELL_COMMAND_SCHEMA,
+    GET_CURRENT_DATETIME_SCHEMA,
+)
 
 # Maps tool name -> the actual Python function to call
 TOOL_FUNCTIONS = {
@@ -23,6 +36,7 @@ TOOL_FUNCTIONS = {
     "list_directory": list_directory,
     "write_file": write_file,
     "run_shell_command": run_shell_command,
+    "get_current_datetime": get_current_datetime,
     "read_screen": read_screen,
     "remember": remember,
     "forget": forget,
@@ -35,6 +49,7 @@ TOOL_SCHEMAS = [
     LIST_DIRECTORY_SCHEMA,
     WRITE_FILE_SCHEMA,
     RUN_SHELL_COMMAND_SCHEMA,
+    GET_CURRENT_DATETIME_SCHEMA,
     READ_SCREEN_SCHEMA,
     REMEMBER_SCHEMA,
     FORGET_SCHEMA,
@@ -49,6 +64,7 @@ TOOL_TRUST = {
     "list_directory": "safe",
     "write_file": "confirm",
     "run_shell_command": "confirm",
+    "get_current_datetime": "safe",
     "read_screen": "safe",
     "remember": "safe",
     "recall": "safe",

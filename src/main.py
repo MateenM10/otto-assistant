@@ -1,57 +1,54 @@
 """
 Entry point. Run with: python -m src.main
 
-Push-to-talk: press Enter to start speaking, press Enter again to
-stop. Or type a message directly instead. Jarvis speaks its replies
-out loud. Type 'dry run' to toggle dry-run mode. Type 'exit' to quit.
+All interaction now happens in the HUD in your browser — this
+terminal only shows startup info and permission prompts (moving
+those into the HUD is the next step).
 
-Also starts the HUD server, which serves a visual status display at
-http://localhost:8765/index.html showing what the assistant is doing.
+Press Ctrl+C here to quit.
 """
 
+import queue
+
 from src.assistant import Assistant
-from src.voice import listen
 from src.speech import speak
-from src.hud_server import start_hud_server, set_status
+from src.hud_server import start_hud_server, set_status, add_message, get_next_input
 
 
 def main():
-    print("Jarvis (Phase 4 - HUD). Press Enter to talk, or type. Type 'exit' to quit.\n")
-
     url = start_hud_server()
-    print(f"HUD available at {url}\n")
+    print("Jarvis running.")
+    print(f"Open the HUD at {url}")
+    print("Type in the HUD to talk to it. Ctrl+C here to quit.\n")
 
     assistant = Assistant()
 
     while True:
         try:
-            typed = input("You (press Enter to talk instead): ").strip()
-        except (EOFError, KeyboardInterrupt):
+            user_input = get_next_input(timeout=0.5)
+        except queue.Empty:
+            continue  # nothing sent yet; loop again so Ctrl+C stays responsive
+        except KeyboardInterrupt:
             print("\nGoodbye.")
             break
 
-        if typed.lower() in ("exit", "quit"):
+        if user_input.lower() in ("exit", "quit"):
+            add_message("system", "Session ended.")
             print("Goodbye.")
             break
 
-        if typed.lower() == "dry run":
-            print(assistant.toggle_dry_run())
+        if user_input.lower() == "dry run":
+            message = assistant.toggle_dry_run()
+            add_message("system", message)
+            print(message)
             continue
 
-        if typed == "":
-            # Empty input means they just pressed Enter -> start listening
-            set_status("listening")
-            user_input = listen()
-            print(f"You said: {user_input}")
-        else:
-            user_input = typed
-
-        if not user_input:
-            set_status("standby")
-            continue
+        add_message("user", user_input)
+        print(f"You: {user_input}")
 
         reply = assistant.send(user_input)
-        print(f"\nJarvis: {reply}\n")
+        add_message("jarvis", reply)
+        print(f"Jarvis: {reply}\n")
 
         set_status("speaking")
         speak(reply)
