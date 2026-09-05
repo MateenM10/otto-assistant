@@ -1,14 +1,8 @@
-"""
-Reusable voice input: record from the mic, transcribe with Whisper.
-
-Recording now stops when you press Enter again, instead of waiting a
-fixed number of seconds — feels much snappier for short questions.
-"""
-
-import sounddevice as sd
-import numpy as np
-import wave
 import threading
+import wave
+
+import numpy as np
+import sounddevice as sd
 from faster_whisper import WhisperModel
 
 SAMPLE_RATE = 16000
@@ -18,11 +12,17 @@ print("Loading speech recognition model...")
 _model = WhisperModel("base", device="cpu", compute_type="int8")
 print("Ready.")
 
+_stop_recording = threading.Event()
+
+
+def request_stop() -> None:
+    """Signal an in-progress recording to finish. Called by the HUD."""
+    _stop_recording.set()
+
 
 def listen() -> str:
-    """Record from the mic until the user presses Enter again, then transcribe."""
-    print("Listening... (press Enter when you're done talking)")
-
+    """Record until request_stop() is called, then transcribe."""
+    _stop_recording.clear()
     chunks = []
 
     def callback(indata, frames, time_info, status):
@@ -36,7 +36,10 @@ def listen() -> str:
     )
 
     with stream:
-        input()  # blocks here until Enter is pressed again
+        # Wake up periodically rather than blocking forever, so a
+        # Ctrl+C in the terminal can still interrupt.
+        while not _stop_recording.wait(timeout=0.1):
+            pass
 
     if not chunks:
         return ""

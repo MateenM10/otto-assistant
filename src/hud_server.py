@@ -1,17 +1,3 @@
-"""
-Local web server backing the HUD.
-
-Handles two-way communication:
-- Serves the HUD page and exposes state (status, tool events,
-  conversation) at /status for the page to poll.
-- Accepts user input from the page at /send, queued for the main
-  loop to pick up.
-
-Runs in a background thread. The queue is what lets the browser (in
-the server thread) hand work to the assistant (in the main thread)
-without either blocking the other.
-"""
-
 import json
 import queue
 import threading
@@ -22,11 +8,17 @@ PORT = 8765
 MAX_EVENTS = 12      # tool activity entries kept for display
 MAX_MESSAGES = 40    # conversation turns kept for display
 
-_state = {"status": "standby", "detail": ""}
+_state = {"status": "standby", "detail": "", "recording": False}
 _events = []         # newest first
 _messages = []       # oldest first, like a chat log
 _lock = threading.Lock()
 _input_queue = queue.Queue()
+
+# Set by the server thread when the mic button is pressed; read by the
+# main loop. Separate from the input queue because starting a recording
+# isn't a message — it's a mode change.
+_mic_start = threading.Event()
+_mic_stop = threading.Event()
 
 
 def set_status(status: str, detail: str = "") -> None:
@@ -34,6 +26,12 @@ def set_status(status: str, detail: str = "") -> None:
     with _lock:
         _state["status"] = status
         _state["detail"] = detail
+
+
+def set_recording(is_recording: bool) -> None:
+    """Tell the HUD whether the mic is currently live."""
+    with _lock:
+        _state["recording"] = is_recording
 
 
 def add_event(tool: str, args: dict, outcome: str) -> None:
@@ -64,10 +62,18 @@ def add_message(role: str, text: str) -> None:
 def get_next_input(timeout: float = 0.5) -> str:
     """Block until the browser sends something, or raise queue.Empty.
 
-    The timeout matters: it lets the main loop wake up periodically so
-    Ctrl+C can actually interrupt it.
+    The timeout lets the main loop wake up periodically so Ctrl+C can
+    actually interrupt it.
     """
     return _input_queue.get(timeout=timeout)
+
+
+def mic_start_requested() -> bool:
+    """True if the mic button was pressed since the last check."""
+    if _mic_start.is_set():
+        _mic_start.clear()
+        return True
+    return False
 
 
 def _summarize_args(args: dict) -> str:
@@ -100,21 +106,33 @@ class _Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/send":
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length).decode("utf-8")
-            try:
-                text = json.loads(raw).get("text", "").strip()
-            except json.JSONDecodeError:
-                text = ""
-
+            text = self._read_json().get("text", "").strip()
             if text:
                 _input_queue.put(text)
-
             self._respond_json(json.dumps({"ok": bool(text)}).encode("utf-8"))
+            return
+
+        if self.path == "/mic":
+            action = self._read_json().get("action", "")
+            if action == "start":
+                _mic_start.set()
+            elif action == "stop":
+                # Import here to avoid a circular import at module load
+                from .voice import request_stop
+                request_stop()
+            self._respond_json(json.dumps({"ok": True}).encode("utf-8"))
             return
 
         self.send_response(404)
         self.end_headers()
+
+    def _read_json(self) -> dict:
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length).decode("utf-8")
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
 
     def _respond_json(self, payload: bytes):
         self.send_response(200)

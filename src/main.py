@@ -1,36 +1,46 @@
-"""
-Entry point. Run with: python -m src.main
-
-All interaction now happens in the HUD in your browser — this
-terminal only shows startup info and permission prompts (moving
-those into the HUD is the next step).
-
-Press Ctrl+C here to quit.
-"""
-
 import queue
 
 from src.assistant import Assistant
 from src.speech import speak
-from src.hud_server import start_hud_server, set_status, add_message, get_next_input
+from src.voice import listen
+from src.hud_server import (
+    start_hud_server,
+    set_status,
+    set_recording,
+    add_message,
+    get_next_input,
+    mic_start_requested,
+)
 
 
 def main():
     url = start_hud_server()
     print("Jarvis running.")
     print(f"Open the HUD at {url}")
-    print("Type in the HUD to talk to it. Ctrl+C here to quit.\n")
+    print("Type or press the mic button in the HUD. Ctrl+C here to quit.\n")
 
     assistant = Assistant()
 
     while True:
-        try:
-            user_input = get_next_input(timeout=0.5)
-        except queue.Empty:
-            continue  # nothing sent yet; loop again so Ctrl+C stays responsive
-        except KeyboardInterrupt:
-            print("\nGoodbye.")
-            break
+        user_input = None
+
+        # Check for a mic press first, then fall back to typed input.
+        if mic_start_requested():
+            set_status("listening")
+            set_recording(True)
+            user_input = listen()
+            set_recording(False)
+            if not user_input:
+                set_status("standby")
+                continue
+        else:
+            try:
+                user_input = get_next_input(timeout=0.2)
+            except queue.Empty:
+                continue  # nothing yet; loop so Ctrl+C stays responsive
+            except KeyboardInterrupt:
+                print("\nGoodbye.")
+                break
 
         if user_input.lower() in ("exit", "quit"):
             add_message("system", "Session ended.")

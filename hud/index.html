@@ -186,6 +186,33 @@
   }
 
   #input::placeholder { color: var(--glow-dim); opacity: 0.7; }
+
+  #mic {
+    background: rgba(53, 224, 240, 0.05);
+    border: 1px solid var(--glow-dim);
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    color: var(--glow);
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+
+  #mic:hover { border-color: var(--glow); }
+
+  #mic.recording {
+    background: rgba(255, 107, 107, 0.15);
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+    animation: rec-pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes rec-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4); }
+    50%      { box-shadow: 0 0 0 10px rgba(255, 107, 107, 0); }
+  }
 </style>
 </head>
 <body>
@@ -258,10 +285,13 @@
 
   <div class="input-bar">
     <input id="input" type="text" placeholder="Type a message and press Enter…" autocomplete="off">
+    <button id="mic" title="Click to start talking, click again to stop">●</button>
   </div>
 
   <script>
     const input = document.getElementById("input");
+    const mic = document.getElementById("mic");
+    let recording = false;
 
     // Escape anything coming from the server before putting it in the
     // DOM — screen OCR and model output can contain angle brackets.
@@ -285,6 +315,16 @@
       if (!text) return;
       send(text);
       input.value = "";
+    });
+
+    mic.addEventListener("click", async () => {
+      const action = recording ? "stop" : "start";
+      recording = !recording;
+      await fetch("/mic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action })
+      });
     });
 
     function renderEvents(events) {
@@ -329,8 +369,15 @@
       try {
         const res = await fetch("/status");
         const data = await res.json();
+
         document.getElementById("status").textContent =
           data.detail ? `${data.status} — ${data.detail}` : data.status;
+
+        // Keep the button in sync with Python's actual recording state,
+        // in case they drift (e.g. a recording ended on its own).
+        recording = data.recording;
+        mic.classList.toggle("recording", data.recording);
+
         renderEvents(data.events);
         renderMessages(data.messages);
       } catch (e) {
