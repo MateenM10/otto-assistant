@@ -1,18 +1,3 @@
-"""
-The core tool-calling loop, running against a local Ollama model.
-
-Permission is enforced centrally here, based on each tool's trust
-level (see TOOL_TRUST in src/tools/__init__.py) — "safe" tools run
-instantly, "confirm" tools ask the user first (unless dry-run mode
-is on, in which case they're only previewed, never actually run).
-Every call, allowed or not, gets recorded to the audit log.
-
-Also includes a fallback parser: this local model occasionally
-outputs a tool call as plain text instead of a real API-level tool
-call, sometimes with malformed JSON. We detect that pattern
-leniently and recover it as a real tool call.
-"""
-
 import json
 import re
 import requests
@@ -21,7 +6,7 @@ from .audit import log_tool_call
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.2:3b"
-MAX_RESPONSE_TOKENS = 150  # keep replies short so they're quick to speak
+MAX_RESPONSE_TOKENS = 400  # keep replies short so they're quick to speak
 
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
