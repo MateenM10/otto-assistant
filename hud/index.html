@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>JARVIS</title>
+<style>
+  :root {
+    --glow: #35e0f0;
+    --glow-dim: #1a7f8a;
+    --bg: #0a1420;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: radial-gradient(circle at center, #12212f 0%, var(--bg) 70%);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: "SF Mono", Menlo, monospace;
+    color: var(--glow);
+    overflow: hidden;
+  }
+
+  .reactor { position: relative; width: 420px; height: 420px; }
+
+  .reactor svg {
+    position: absolute;
+    inset: 0;
+    filter: drop-shadow(0 0 6px var(--glow-dim));
+  }
+
+  /* Each ring spins at its own speed/direction so the whole thing
+     never looks like one rigid object rotating. */
+  .spin-slow    { animation: spin 24s linear infinite; }
+  .spin-medium  { animation: spin 14s linear infinite reverse; }
+  .spin-fast    { animation: spin 8s  linear infinite; }
+  .spin-slowest { animation: spin 40s linear infinite reverse; }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  .core {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .label {
+    font-size: 22px;
+    letter-spacing: 8px;
+    text-shadow: 0 0 12px var(--glow);
+  }
+
+  .status {
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--glow-dim);
+    text-transform: uppercase;
+  }
+
+  /* Gentle pulse on the innermost disc so it feels alive at rest */
+  .pulse { animation: pulse 3s ease-in-out infinite; transform-origin: center; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 0.9; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="reactor">
+
+    <!-- Outer dashed ring -->
+    <svg class="spin-slowest" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="94" fill="none"
+              stroke="var(--glow-dim)" stroke-width="0.8"
+              stroke-dasharray="2 6"/>
+    </svg>
+
+    <!-- Segmented ring: long arcs with gaps -->
+    <svg class="spin-slow" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="84" fill="none"
+              stroke="var(--glow)" stroke-width="1.5"
+              stroke-dasharray="60 30" opacity="0.7"/>
+    </svg>
+
+    <!-- Tick marks -->
+    <svg class="spin-medium" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="72" fill="none"
+              stroke="var(--glow)" stroke-width="4"
+              stroke-dasharray="1 5" opacity="0.55"/>
+    </svg>
+
+    <!-- Thin bright ring -->
+    <svg class="spin-fast" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="60" fill="none"
+              stroke="var(--glow)" stroke-width="1"
+              stroke-dasharray="120 40"/>
+    </svg>
+
+    <!-- Inner dotted ring -->
+    <svg class="spin-medium" viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="50" fill="none"
+              stroke="var(--glow-dim)" stroke-width="3"
+              stroke-dasharray="1 4"/>
+    </svg>
+
+    <!-- Static core ring + soft filled disc -->
+    <svg viewBox="0 0 200 200">
+      <circle cx="100" cy="100" r="40" fill="none"
+              stroke="var(--glow)" stroke-width="1.5" opacity="0.9"/>
+      <circle class="pulse" cx="100" cy="100" r="38"
+              fill="var(--glow)" opacity="0.12"/>
+    </svg>
+
+    <div class="core">
+      <div class="label">JARVIS</div>
+      <div class="status" id="status">standby</div>
+    </div>
+
+  </div>
+
+</body>
+</html>
