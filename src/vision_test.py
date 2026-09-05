@@ -1,39 +1,79 @@
-import pyautogui
+"""
+OCR tuning: capture the active window once, then run OCR on it with
+several different preprocessing settings so we can compare which
+produces the cleanest text.
+"""
+
+import subprocess
 import pytesseract
 from PIL import Image
 
-SCREENSHOT_PATH = "test_screenshot.png"
+from src.tools.vision_tools import _get_active_window_bounds
+
+CAPTURE_PATH = "ocr_tuning_capture.png"
 
 
-def preprocess_for_ocr(image: Image.Image) -> Image.Image:
-    """Clean up a screenshot to make text extraction more reliable.
+def capture_active_window():
+    bounds = _get_active_window_bounds()
+    if bounds:
+        x, y, w, h = bounds
+        args = ["screencapture", "-o", "-x", "-R", f"{x},{y},{w},{h}", CAPTURE_PATH]
+    else:
+        args = ["screencapture", "-o", "-x", CAPTURE_PATH]
+    subprocess.run(args, capture_output=True, timeout=15)
+    return Image.open(CAPTURE_PATH)
 
-    - Convert to grayscale: color info isn't needed for reading text,
-      and removing it reduces noise Tesseract has to deal with.
-    - Upscale 2x: small UI text (status bars, icons) is often too
-      small for Tesseract to read reliably at native resolution.
-    - Increase contrast via thresholding: turns the image into clean
-      black-on-white, which is what OCR engines are tuned for.
-    """
+
+def variant_raw(image):
+    """No preprocessing at all — baseline."""
+    return image
+
+
+def variant_current(image):
+    """What we use now: grayscale, 2x upscale, threshold at 150."""
     gray = image.convert("L")
-    width, height = gray.size
-    upscaled = gray.resize((width * 2, height * 2), Image.LANCZOS)
-    # Simple threshold: anything darker than 150 becomes black, else white
-    threshold = upscaled.point(lambda pixel: 0 if pixel < 150 else 255)
-    return threshold
+    w, h = gray.size
+    up = gray.resize((w * 2, h * 2), Image.LANCZOS)
+    return up.point(lambda p: 0 if p < 150 else 255)
 
 
-print("Taking screenshot...")
-screenshot = pyautogui.screenshot()
-screenshot.save(SCREENSHOT_PATH)
-print(f"Saved to {SCREENSHOT_PATH}")
+def variant_grayscale_only(image):
+    """Grayscale + upscale, but no thresholding."""
+    gray = image.convert("L")
+    w, h = gray.size
+    return gray.resize((w * 2, h * 2), Image.LANCZOS)
 
-print("Preprocessing for OCR...")
-cleaned = preprocess_for_ocr(screenshot)
-cleaned.save("test_screenshot_cleaned.png")  # so you can look at it yourself
 
-print("Running OCR...")
-extracted_text = pytesseract.image_to_string(cleaned).strip()
+def variant_inverted(image):
+    """Dark themes are light-on-dark; OCR expects dark-on-light.
+    Inverting may help significantly for a dark VS Code theme."""
+    gray = image.convert("L")
+    w, h = gray.size
+    up = gray.resize((w * 2, h * 2), Image.LANCZOS)
+    inverted = up.point(lambda p: 255 - p)
+    return inverted.point(lambda p: 0 if p < 150 else 255)
 
-print("\nOCR result:")
-print(extracted_text if extracted_text else "(no text detected)")
+
+VARIANTS = {
+    "raw (no preprocessing)": variant_raw,
+    "current (gray+2x+threshold)": variant_current,
+    "grayscale + upscale only": variant_grayscale_only,
+    "inverted (for dark themes)": variant_inverted,
+}
+
+print("Capturing active window in 3 seconds — click the window you want to test...")
+import time
+time.sleep(3)
+
+image = capture_active_window()
+print(f"Captured. Size: {image.size}\n")
+
+for name, func in VARIANTS.items():
+    processed = func(image)
+    text = pytesseract.image_to_string(processed).strip()
+    char_count = len(text)
+    print("=" * 60)
+    print(f"VARIANT: {name}  ({char_count} chars extracted)")
+    print("=" * 60)
+    print(text[:600] if text else "(nothing detected)")
+    print()

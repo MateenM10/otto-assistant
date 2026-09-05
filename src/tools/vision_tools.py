@@ -1,20 +1,3 @@
-"""
-Screen perception tool: captures the frontmost application window and
-extracts visible text via OCR.
-
-Design notes:
-- We capture only the active window, not the whole screen. Full-screen
-  captures pull in the dock, menu bar, and background windows, which
-  added a lot of OCR noise.
-- Window bounds come from AppleScript via System Events (requires
-  Accessibility permission for the app running this).
-- Apps often report multiple "windows" including thin toolbar strips,
-  so we pick the largest one by area.
-- Moondream (vision model) was tested and dropped — its descriptions
-  were unreliable, hallucinating scenes unrelated to actual screen
-  content. OCR is imperfect but grounded in what's really there.
-"""
-
 import subprocess
 import pytesseract
 from PIL import Image
@@ -70,12 +53,16 @@ def _get_active_window_bounds():
 
 
 def _preprocess_for_ocr(image: Image.Image) -> Image.Image:
-    """Grayscale + upscale + threshold makes small UI text far more
-    readable to Tesseract than a raw screenshot."""
+    """Grayscale + 2x upscale, no thresholding.
+
+    Tested four variants (raw, threshold, grayscale-only, inverted) on
+    a dark-theme VS Code window. Thresholding performed WORST — it
+    destroys the anti-aliased edges Tesseract uses to identify letter
+    shapes on screen text. Grayscale + upscale performed best.
+    """
     gray = image.convert("L")
     width, height = gray.size
-    upscaled = gray.resize((width * 2, height * 2), Image.LANCZOS)
-    return upscaled.point(lambda pixel: 0 if pixel < 150 else 255)
+    return gray.resize((width * 2, height * 2), Image.LANCZOS)
 
 
 def read_screen(reason: str = "") -> str:
