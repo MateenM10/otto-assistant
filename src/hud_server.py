@@ -1,13 +1,13 @@
 import json
 import threading
+from datetime import datetime
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 PORT = 8765
+MAX_EVENTS = 12  # only keep the most recent few; the HUD can't show more
 
-# Shared state the assistant updates and the HUD reads.
-# A lock isn't strictly needed for a single string on CPython, but it
-# makes the intent clear and avoids surprises if this grows.
 _state = {"status": "standby", "detail": ""}
+_events = []  # newest first
 _lock = threading.Lock()
 
 
@@ -18,22 +18,52 @@ def set_status(status: str, detail: str = "") -> None:
         _state["detail"] = detail
 
 
+def add_event(tool: str, args: dict, outcome: str) -> None:
+    """Record a tool call for the HUD's activity feed.
+
+    outcome is one of: "allowed", "denied", "dry-run", "error".
+    """
+    with _lock:
+        _events.insert(
+            0,
+            {
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "tool": tool,
+                "args": _summarize_args(args),
+                "outcome": outcome,
+            },
+        )
+        del _events[MAX_EVENTS:]
+
+
+def _summarize_args(args: dict) -> str:
+    """Keep the feed readable — arguments can be long (file contents,
+    shell commands), so truncate them for display."""
+    if not args:
+        return ""
+    parts = []
+    for key, value in args.items():
+        text = str(value)
+        if len(text) > 40:
+            text = text[:40] + "…"
+        parts.append(f"{key}={text}")
+    return ", ".join(parts)
+
+
 class _Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        # Serve files out of the hud/ folder
         super().__init__(*args, directory="hud", **kwargs)
 
     def do_GET(self):
         if self.path == "/status":
             with _lock:
-                payload = json.dumps(_state).encode("utf-8")
+                payload = json.dumps({**_state, "events": list(_events)}).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
             return
-        # Anything else: serve as a normal static file
         super().do_GET()
 
     def log_message(self, *args):

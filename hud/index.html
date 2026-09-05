@@ -76,6 +76,53 @@
     0%, 100% { opacity: 0.45; }
     50%      { opacity: 0.9; }
   }
+
+  /* --- Tool activity feed --- */
+  .feed {
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 340px;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+
+  .feed-title {
+    color: var(--glow);
+    letter-spacing: 4px;
+    font-size: 10px;
+    margin-bottom: 10px;
+    opacity: 0.8;
+    border-bottom: 1px solid var(--glow-dim);
+    padding-bottom: 6px;
+  }
+
+  .event {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0;
+    opacity: 0.85;
+    border-left: 2px solid transparent;
+    padding-left: 8px;
+  }
+
+  /* Colour-coded by outcome so permission decisions are visible at a glance */
+  .event.allowed { border-left-color: var(--glow); }
+  .event.denied  { border-left-color: #ff6b6b; }
+  .event.dry-run { border-left-color: #ffd166; }
+  .event.error   { border-left-color: #ff6b6b; }
+
+  .event-time { color: var(--glow-dim); flex-shrink: 0; }
+  .event-tool { color: var(--glow); flex-shrink: 0; }
+  .event-args {
+    color: var(--glow-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .feed-empty { color: var(--glow-dim); opacity: 0.5; }
 </style>
 </head>
 <body>
@@ -132,15 +179,36 @@
 
   </div>
 
+  <div class="feed">
+    <div class="feed-title">TOOL ACTIVITY</div>
+    <div id="events"><div class="feed-empty">no activity yet</div></div>
+  </div>
+
   <script>
-    // Poll the Python server a few times a second so the status text
-    // reflects what the assistant is actually doing right now.
+    function renderEvents(events) {
+      const container = document.getElementById("events");
+      if (!events || events.length === 0) {
+        container.innerHTML = '<div class="feed-empty">no activity yet</div>';
+        return;
+      }
+      container.innerHTML = events.map(e => `
+        <div class="event ${e.outcome}">
+          <span class="event-time">${e.time}</span>
+          <span class="event-tool">${e.tool}</span>
+          <span class="event-args">${e.args}</span>
+        </div>
+      `).join("");
+    }
+
+    // Poll the Python server a few times a second so the status and
+    // activity feed reflect what the assistant is actually doing.
     async function poll() {
       try {
         const res = await fetch("/status");
         const data = await res.json();
         document.getElementById("status").textContent =
           data.detail ? `${data.status} — ${data.detail}` : data.status;
+        renderEvents(data.events);
       } catch (e) {
         document.getElementById("status").textContent = "disconnected";
       }

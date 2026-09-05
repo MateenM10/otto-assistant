@@ -5,15 +5,13 @@ Permission is enforced centrally here, based on each tool's trust
 level (see TOOL_TRUST in src/tools/__init__.py) — "safe" tools run
 instantly, "confirm" tools ask the user first (unless dry-run mode
 is on, in which case they're only previewed, never actually run).
-Every call, allowed or not, gets recorded to the audit log.
+Every call, allowed or not, gets recorded to the audit log and
+pushed to the HUD's live activity feed.
 
 Also includes a fallback parser: this local model occasionally
 outputs a tool call as plain text instead of a real API-level tool
 call, sometimes with malformed JSON. We detect that pattern
 leniently and recover it as a real tool call.
-
-Status updates are pushed to the HUD server as the loop progresses,
-so the visual display reflects what's actually happening.
 """
 
 import json
@@ -21,7 +19,7 @@ import re
 import requests
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS, TOOL_TRUST
 from .audit import log_tool_call
-from .hud_server import set_status
+from .hud_server import set_status, add_event
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.2:3b"
@@ -152,6 +150,7 @@ class Assistant:
         if func is None:
             result = f"Error: unknown tool '{name}'"
             log_tool_call(name, {}, result, allowed=False)
+            add_event(name, {}, "error")
             return result
 
         if isinstance(raw_arguments, str):
@@ -171,6 +170,7 @@ class Assistant:
             if self.dry_run:
                 result = f"[DRY RUN] Would run {name}({args}), but dry-run mode is on — nothing actually happened."
                 log_tool_call(name, args, result, allowed=False)
+                add_event(name, args, "dry-run")
                 return result
 
             set_status("awaiting permission", name)
@@ -178,6 +178,7 @@ class Assistant:
             if confirmation != "y":
                 result = "User declined to run this tool."
                 log_tool_call(name, args, result, allowed=False)
+                add_event(name, args, "denied")
                 return result
 
         set_status("running tool", name)
@@ -185,8 +186,10 @@ class Assistant:
         try:
             result = str(func(**args))
             log_tool_call(name, args, result, allowed=True)
+            add_event(name, args, "allowed")
             return result
         except Exception as e:
             result = f"Error running tool '{name}': {e}"
             log_tool_call(name, args, result, allowed=False)
+            add_event(name, args, "error")
             return result
