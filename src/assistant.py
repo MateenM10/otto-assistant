@@ -8,6 +8,10 @@ is on, in which case they're only previewed, never actually run).
 Every call, allowed or not, gets recorded to the audit log and
 pushed to the HUD's live activity feed.
 
+Persistent memory (src/memory.py) is loaded into the system prompt at
+startup, so each session begins already knowing what was learned in
+previous ones.
+
 Also includes a fallback parser: this local model occasionally
 outputs a tool call as plain text instead of a real API-level tool
 call, sometimes with malformed JSON. We detect that pattern
@@ -20,6 +24,7 @@ import requests
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS, TOOL_TRUST
 from .audit import log_tool_call
 from .hud_server import set_status, add_event
+from .memory import format_for_prompt
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
 MODEL = "llama3.2:3b"
@@ -27,8 +32,8 @@ MAX_RESPONSE_TOKENS = 400  # long enough to summarize a screenful of text
 
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
-directories, write files, run shell commands, and read the text
-visible on the user's screen.
+directories, write files, run shell commands, read the text visible on
+the user's screen, and remember things about the user across sessions.
 
 IMPORTANT: When the user asks about files, directories, or anything
 you could check with a tool, you MUST call the tool yourself and use
@@ -38,7 +43,11 @@ actually run it using your tools and give them the real answer.
 If the user asks what's on their screen, what they're looking at, or
 to read/summarize something currently displayed, use the read_screen
 tool — do NOT use run_shell_command or list_directory for this, since
-those only show file names, not actual screen content."""
+those only show file names, not actual screen content.
+
+When the user tells you something worth remembering long-term (their
+name, preferences, what they're working on), use the remember tool to
+store it."""
 
 
 def _to_ollama_tool(schema: dict) -> dict:
@@ -57,7 +66,10 @@ def _to_ollama_tool(schema: dict) -> dict:
 
 class Assistant:
     def __init__(self):
-        self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        # Append anything we've learned in previous sessions to the
+        # system prompt, so memory is available from the first message.
+        system_prompt = SYSTEM_PROMPT + format_for_prompt()
+        self.messages = [{"role": "system", "content": system_prompt}]
         self.ollama_tools = [_to_ollama_tool(s) for s in TOOL_SCHEMAS]
         self.dry_run = False
 

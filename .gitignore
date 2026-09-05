@@ -12,5 +12,10 @@ __pycache__/
 # Editor
 .vscode/settings.json
 
-# Logs (Phase 3+)
+# Runtime data (personal, machine-specific — not source code)
 audit_log.jsonl
+memory.json
+
+# Captured media from testing
+*.wav
+*.png

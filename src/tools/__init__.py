@@ -1,4 +1,12 @@
 from .vision_tools import read_screen, READ_SCREEN_SCHEMA
+from .memory_tools import (
+    remember,
+    forget,
+    recall,
+    REMEMBER_SCHEMA,
+    FORGET_SCHEMA,
+    RECALL_SCHEMA,
+)
 from .file_tools import (
     read_file,
     list_directory,
@@ -16,6 +24,9 @@ TOOL_FUNCTIONS = {
     "write_file": write_file,
     "run_shell_command": run_shell_command,
     "read_screen": read_screen,
+    "remember": remember,
+    "forget": forget,
+    "recall": recall,
 }
 
 # List of schemas sent to the model so it knows what tools exist
@@ -25,6 +36,9 @@ TOOL_SCHEMAS = [
     WRITE_FILE_SCHEMA,
     RUN_SHELL_COMMAND_SCHEMA,
     READ_SCREEN_SCHEMA,
+    REMEMBER_SCHEMA,
+    FORGET_SCHEMA,
+    RECALL_SCHEMA,
 ]
 
 # Trust tiers: "safe" tools run instantly, "confirm" tools always ask
@@ -36,4 +50,7 @@ TOOL_TRUST = {
     "write_file": "confirm",
     "run_shell_command": "confirm",
     "read_screen": "safe",
+    "remember": "safe",
+    "recall": "safe",
+    "forget": "confirm",  # destructive — ask before deleting memories
 }
