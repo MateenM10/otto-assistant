@@ -17,9 +17,15 @@ def main():
     url = start_hud_server()
     print("Jarvis running.")
     print(f"Open the HUD at {url}")
-    print("Type or press the mic button in the HUD. Ctrl+C here to quit.\n")
 
-    assistant = Assistant()
+    try:
+        assistant = Assistant()
+    except RuntimeError as e:
+        print(f"\nCouldn't start: {e}")
+        return
+
+    print(f"Backend: {assistant.backend.__class__.__name__} ({assistant.backend.model})")
+    print("Type or press the mic button in the HUD. Ctrl+C here to quit.\n")
 
     while True:
         user_input = None

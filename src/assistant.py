@@ -1,14 +1,11 @@
 import json
 import re
-import requests
+
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS, TOOL_TRUST
 from .audit import log_tool_call
 from .hud_server import set_status, add_event, request_permission
 from .memory import format_for_prompt
-
-OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
-MODEL = "llama3.2:3b"
-MAX_RESPONSE_TOKENS = 400  # long enough to summarize a screenful of text
+from .backends.llm import build_backend
 
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
@@ -26,6 +23,12 @@ to read/summarize something currently displayed, use the read_screen
 tool — do NOT use run_shell_command or list_directory for this, since
 those only show file names, not actual screen content.
 
+Screen text comes from OCR and will contain garbled fragments, stray
+characters, and nonsense words from icons and UI decorations. Never
+repeat the raw OCR output back to the user. Read through the noise,
+work out what is actually on screen, and describe it in your own words
+in a few sentences.
+
 If the user asks about anything outside their computer — news, sports,
 current events, prices, documentation, or any fact you're unsure of —
 use the search_web tool rather than answering from memory. Your
@@ -38,9 +41,9 @@ name, preferences, what they're working on), use the remember tool to
 store it."""
 
 
-def _to_ollama_tool(schema: dict) -> dict:
-    """Our tool files describe tools in Claude's shape. Ollama wants
-    them wrapped differently, so we convert here in one place instead
+def _to_openai_tool(schema: dict) -> dict:
+    """Our tool files describe tools in Claude's shape. Both Ollama and
+    Groq expect OpenAI's shape, so we convert here in one place instead
     of rewriting every tool file."""
     return {
         "type": "function",
@@ -58,8 +61,13 @@ class Assistant:
         # system prompt, so memory is available from the first message.
         system_prompt = SYSTEM_PROMPT + format_for_prompt()
         self.messages = [{"role": "system", "content": system_prompt}]
-        self.ollama_tools = [_to_ollama_tool(s) for s in TOOL_SCHEMAS]
+        self.tools = [_to_openai_tool(s) for s in TOOL_SCHEMAS]
         self.dry_run = False
+        self.backend = build_backend()
+
+        error = self.backend.check_ready()
+        if error:
+            raise RuntimeError(error)
 
     def toggle_dry_run(self) -> str:
         self.dry_run = not self.dry_run
@@ -70,17 +78,7 @@ class Assistant:
         set_status("thinking")
 
         while True:
-            response = requests.post(
-                OLLAMA_URL,
-                json={
-                    "model": MODEL,
-                    "messages": self.messages,
-                    "tools": self.ollama_tools,
-                    "options": {"num_predict": MAX_RESPONSE_TOKENS},
-                },
-            )
-            data = response.json()
-            message = data["choices"][0]["message"]
+            message = self.backend.chat(self.messages, self.tools)
 
             if message.get("tool_calls"):
                 # Real, properly-formatted tool call from the API
@@ -100,7 +98,7 @@ class Assistant:
 
             reply = message.get("content") or ""
 
-            # Safety net: model sometimes fakes a tool call as plain text
+            # Safety net: smaller models sometimes fake a tool call as plain text
             fake_call = self._try_parse_fake_tool_call(reply)
             if fake_call:
                 name, params = fake_call
@@ -117,11 +115,10 @@ class Assistant:
             return reply
 
     def _try_parse_fake_tool_call(self, text: str):
-        """Detect the model outputting a tool call as plain text instead
+        """Detect a model outputting a tool call as plain text instead
         of a real tool call, and recover it. Deliberately lenient: the
-        model sometimes emits malformed JSON (e.g. broken braces), so we
-        extract the tool name by pattern rather than requiring the whole
-        string to parse cleanly."""
+        malformed JSON we saw in testing (broken braces) would fail a
+        strict parse, so we extract the tool name by pattern first."""
         name_match = re.search(r'"name"\s*:\s*"(\w+)"', text)
         if not name_match:
             return None
