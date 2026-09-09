@@ -8,7 +8,7 @@ PORT = 8765
 MAX_EVENTS = 12      # tool activity entries kept for display
 MAX_MESSAGES = 40    # conversation turns kept for display
 
-_state = {"status": "standby", "detail": "", "recording": False}
+_state = {"status": "standby", "detail": "", "recording": False, "pending": None}
 _events = []         # newest first
 _messages = []       # oldest first, like a chat log
 _lock = threading.Lock()
@@ -18,7 +18,12 @@ _input_queue = queue.Queue()
 # main loop. Separate from the input queue because starting a recording
 # isn't a message — it's a mode change.
 _mic_start = threading.Event()
-_mic_stop = threading.Event()
+
+# Pending permission request. The main thread parks on _decision_made
+# while the browser decides; the server thread sets _decision and fires
+# the event when the user clicks Allow or Deny.
+_decision = None         # "allow" | "deny" | None
+_decision_made = threading.Event()
 
 
 def set_status(status: str, detail: str = "") -> None:
@@ -76,9 +81,42 @@ def mic_start_requested() -> bool:
     return False
 
 
+def request_permission(tool: str, args: dict, timeout: float = 120.0) -> bool:
+    """Ask the user via the HUD whether to run a tool. Blocks until
+    they answer or the request times out.
+
+    Returns True if allowed, False if denied or timed out. Timing out
+    denies rather than allows — failing closed is the safe default for
+    a permission system.
+    """
+    global _decision
+
+    _decision = None
+    _decision_made.clear()
+
+    with _lock:
+        _state["pending"] = {"tool": tool, "args": _summarize_args(args)}
+
+    answered = _decision_made.wait(timeout=timeout)
+
+    with _lock:
+        _state["pending"] = None
+
+    if not answered:
+        return False
+    return _decision == "allow"
+
+
+def resolve_permission(decision: str) -> None:
+    """Called by the server thread when the user clicks Allow/Deny."""
+    global _decision
+    _decision = decision
+    _decision_made.set()
+
+
 def _summarize_args(args: dict) -> str:
     """Arguments can be long (file contents, shell commands), so
-    truncate them to keep the feed readable."""
+    truncate them to keep the display readable."""
     if not args:
         return ""
     parts = []
@@ -117,9 +155,16 @@ class _Handler(SimpleHTTPRequestHandler):
             if action == "start":
                 _mic_start.set()
             elif action == "stop":
-                # Import here to avoid a circular import at module load
+                # Imported here to avoid a circular import at module load
                 from .voice import request_stop
                 request_stop()
+            self._respond_json(json.dumps({"ok": True}).encode("utf-8"))
+            return
+
+        if self.path == "/permission":
+            decision = self._read_json().get("decision", "")
+            if decision in ("allow", "deny"):
+                resolve_permission(decision)
             self._respond_json(json.dumps({"ok": True}).encode("utf-8"))
             return
 

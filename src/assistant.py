@@ -1,29 +1,9 @@
-"""
-The core tool-calling loop, running against a local Ollama model.
-
-Permission is enforced centrally here, based on each tool's trust
-level (see TOOL_TRUST in src/tools/__init__.py) — "safe" tools run
-instantly, "confirm" tools ask the user first (unless dry-run mode
-is on, in which case they're only previewed, never actually run).
-Every call, allowed or not, gets recorded to the audit log and
-pushed to the HUD's live activity feed.
-
-Persistent memory (src/memory.py) is loaded into the system prompt at
-startup, so each session begins already knowing what was learned in
-previous ones.
-
-Also includes a fallback parser: this local model occasionally
-outputs a tool call as plain text instead of a real API-level tool
-call, sometimes with malformed JSON. We detect that pattern
-leniently and recover it as a real tool call.
-"""
-
 import json
 import re
 import requests
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS, TOOL_TRUST
 from .audit import log_tool_call
-from .hud_server import set_status, add_event
+from .hud_server import set_status, add_event, request_permission
 from .memory import format_for_prompt
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"
@@ -32,8 +12,9 @@ MAX_RESPONSE_TOKENS = 400  # long enough to summarize a screenful of text
 
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
-directories, write files, run shell commands, read the text visible on
-the user's screen, and remember things about the user across sessions.
+directories, write files, run shell commands, check the current date
+and time, read the text visible on the user's screen, search the web,
+and remember things about the user across sessions.
 
 IMPORTANT: When the user asks about files, directories, or anything
 you could check with a tool, you MUST call the tool yourself and use
@@ -44,6 +25,13 @@ If the user asks what's on their screen, what they're looking at, or
 to read/summarize something currently displayed, use the read_screen
 tool — do NOT use run_shell_command or list_directory for this, since
 those only show file names, not actual screen content.
+
+If the user asks about anything outside their computer — news, sports,
+current events, prices, documentation, or any fact you're unsure of —
+use the search_web tool rather than answering from memory. Your
+training data is out of date. Base your answer only on what the search
+results actually say; if they don't answer the question, say so rather
+than guessing.
 
 When the user tells you something worth remembering long-term (their
 name, preferences, what they're working on), use the remember tool to
@@ -122,7 +110,7 @@ class Assistant:
                     {"role": "user", "content": f"[Recovered tool call result]: {result}"}
                 )
                 set_status("thinking")
-                continue  # loop back around so the model can answer using the real result
+                continue  # loop back so the model can answer using the real result
 
             self.messages.append({"role": "assistant", "content": reply})
             set_status("standby")
@@ -177,8 +165,6 @@ class Assistant:
         trust_level = TOOL_TRUST.get(name, "confirm")  # unknown tools default to safe-side: confirm
 
         if trust_level == "confirm":
-            print(f"\n[Jarvis wants to use]: {name}({args})")
-
             if self.dry_run:
                 result = f"[DRY RUN] Would run {name}({args}), but dry-run mode is on — nothing actually happened."
                 log_tool_call(name, args, result, allowed=False)
@@ -186,8 +172,8 @@ class Assistant:
                 return result
 
             set_status("awaiting permission", name)
-            confirmation = input("Allow this? (y/n): ").strip().lower()
-            if confirmation != "y":
+            allowed = request_permission(name, args)
+            if not allowed:
                 result = "User declined to run this tool."
                 log_tool_call(name, args, result, allowed=False)
                 add_event(name, args, "denied")

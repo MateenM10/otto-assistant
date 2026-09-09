@@ -213,6 +213,70 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.4); }
     50%      { box-shadow: 0 0 0 10px rgba(255, 107, 107, 0); }
   }
+
+  /* --- Permission prompt --- */
+  .permission {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 20, 32, 0.85);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+    z-index: 10;
+  }
+
+  .permission.visible { display: flex; }
+
+  .permission-box {
+    border: 1px solid var(--glow);
+    border-radius: 8px;
+    background: rgba(18, 33, 47, 0.95);
+    padding: 28px 32px;
+    text-align: center;
+    max-width: 480px;
+    box-shadow: 0 0 40px rgba(53, 224, 240, 0.15);
+  }
+
+  .permission-title {
+    font-size: 10px;
+    letter-spacing: 4px;
+    color: var(--glow-dim);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  .permission-tool {
+    font-size: 18px;
+    color: var(--glow);
+    margin-bottom: 6px;
+  }
+
+  .permission-args {
+    font-size: 11px;
+    color: var(--glow-dim);
+    margin-bottom: 22px;
+    word-break: break-all;
+  }
+
+  .permission-buttons { display: flex; gap: 12px; justify-content: center; }
+
+  .permission-buttons button {
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 10px 26px;
+    border-radius: 20px;
+    cursor: pointer;
+    background: transparent;
+    transition: all 0.2s;
+  }
+
+  #allow { border: 1px solid var(--glow); color: var(--glow); }
+  #allow:hover { background: rgba(53, 224, 240, 0.15); }
+
+  #deny { border: 1px solid #ff6b6b; color: #ff6b6b; }
+  #deny:hover { background: rgba(255, 107, 107, 0.15); }
 </style>
 </head>
 <body>
@@ -288,9 +352,22 @@
     <button id="mic" title="Click to start talking, click again to stop">●</button>
   </div>
 
+  <div class="permission" id="permission">
+    <div class="permission-box">
+      <div class="permission-title">Permission required</div>
+      <div class="permission-tool" id="permission-tool"></div>
+      <div class="permission-args" id="permission-args"></div>
+      <div class="permission-buttons">
+        <button id="deny">DENY</button>
+        <button id="allow">ALLOW</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const input = document.getElementById("input");
     const mic = document.getElementById("mic");
+    const permissionEl = document.getElementById("permission");
     let recording = false;
 
     // Escape anything coming from the server before putting it in the
@@ -326,6 +403,35 @@
         body: JSON.stringify({ action })
       });
     });
+
+    async function decide(decision) {
+      permissionEl.classList.remove("visible");
+      await fetch("/permission", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision })
+      });
+    }
+
+    document.getElementById("allow").addEventListener("click", () => decide("allow"));
+    document.getElementById("deny").addEventListener("click", () => decide("deny"));
+
+    // Keyboard shortcuts, so you don't have to reach for the mouse
+    document.addEventListener("keydown", (e) => {
+      if (!permissionEl.classList.contains("visible")) return;
+      if (e.key === "y" || e.key === "Enter") decide("allow");
+      if (e.key === "n" || e.key === "Escape") decide("deny");
+    });
+
+    function renderPermission(pending) {
+      if (!pending) {
+        permissionEl.classList.remove("visible");
+        return;
+      }
+      document.getElementById("permission-tool").textContent = pending.tool;
+      document.getElementById("permission-args").textContent = pending.args;
+      permissionEl.classList.add("visible");
+    }
 
     function renderEvents(events) {
       const container = document.getElementById("events");
@@ -378,6 +484,7 @@
         recording = data.recording;
         mic.classList.toggle("recording", data.recording);
 
+        renderPermission(data.pending);
         renderEvents(data.events);
         renderMessages(data.messages);
       } catch (e) {
