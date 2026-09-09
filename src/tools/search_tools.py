@@ -1,34 +1,65 @@
-from ddgs import DDGS
+import os
+
+from dotenv import load_dotenv
+from tavily import TavilyClient
+
+load_dotenv()
 
 MAX_RESULTS = 5
-MAX_SNIPPET_CHARS = 300
+MAX_CONTENT_CHARS = 500
+
+_api_key = os.environ.get("TAVILY_API_KEY")
+_client = TavilyClient(api_key=_api_key) if _api_key else None
 
 
-def search_web(query: str) -> str:
-    """Search the web and return the top results as readable text."""
+def search_web(query: str = "") -> str:
+    """Search the web and return cleaned, relevant content.
+
+    query defaults to empty rather than being required, because the
+    local model sometimes calls tools with no arguments — returning a
+    readable error it can recover from beats crashing.
+    """
     query = query.strip()
     if not query:
         return "Error: no search query given."
 
+    if _client is None:
+        return (
+            "Error: TAVILY_API_KEY not found. Add it to a .env file in the "
+            "project root (see .env.example)."
+        )
+
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=MAX_RESULTS))
+        response = _client.search(
+            query=query,
+            max_results=MAX_RESULTS,
+            include_answer=True,  # Tavily's own summarised answer, when it has one
+        )
     except Exception as e:
         return f"Error searching the web: {e}"
 
-    if not results:
+    parts = []
+
+    # Tavily often returns a direct answer synthesised from the sources.
+    # Putting it first gives a weak model the answer without needing to
+    # extract it from the raw results itself.
+    answer = response.get("answer")
+    if answer:
+        parts.append(f"Summary: {answer}")
+
+    results = response.get("results", [])
+    if not results and not answer:
         return f"No results found for '{query}'."
 
-    lines = []
     for i, result in enumerate(results, start=1):
         title = result.get("title", "(no title)")
-        body = result.get("body", "")
-        url = result.get("href", "")
-        if len(body) > MAX_SNIPPET_CHARS:
-            body = body[:MAX_SNIPPET_CHARS] + "…"
-        lines.append(f"{i}. {title}\n{body}\nSource: {url}")
+        content = result.get("content", "")
+        url = result.get("url", "")
+        if len(content) > MAX_CONTENT_CHARS:
+            content = content[:MAX_CONTENT_CHARS] + "…"
+        parts.append(f"{i}. {title}\n{content}\nSource: {url}")
 
-    return "\n\n".join(lines)
+    return "\n\n".join(parts)
 
 
 SEARCH_WEB_SCHEMA = {
