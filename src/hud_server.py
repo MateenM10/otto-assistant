@@ -8,7 +8,13 @@ PORT = 8765
 MAX_EVENTS = 12      # tool activity entries kept for display
 MAX_MESSAGES = 40    # conversation turns kept for display
 
-_state = {"status": "standby", "detail": "", "recording": False, "pending": None}
+_state = {
+    "status": "standby",
+    "detail": "",
+    "recording": False,
+    "pending": None,
+    "speech": True,
+}
 _events = []         # newest first
 _messages = []       # oldest first, like a chat log
 _lock = threading.Lock()
@@ -37,6 +43,18 @@ def set_recording(is_recording: bool) -> None:
     """Tell the HUD whether the mic is currently live."""
     with _lock:
         _state["recording"] = is_recording
+
+
+def toggle_speech() -> bool:
+    """Flip spoken replies on/off. Returns the new state."""
+    with _lock:
+        _state["speech"] = not _state["speech"]
+        return _state["speech"]
+
+
+def speech_enabled() -> bool:
+    with _lock:
+        return _state["speech"]
 
 
 def add_event(tool: str, args: dict, outcome: str) -> None:
@@ -166,6 +184,11 @@ class _Handler(SimpleHTTPRequestHandler):
             if decision in ("allow", "deny"):
                 resolve_permission(decision)
             self._respond_json(json.dumps({"ok": True}).encode("utf-8"))
+            return
+
+        if self.path == "/speech":
+            enabled = toggle_speech()
+            self._respond_json(json.dumps({"enabled": enabled}).encode("utf-8"))
             return
 
         self.send_response(404)

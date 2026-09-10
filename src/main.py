@@ -10,6 +10,7 @@ from src.hud_server import (
     add_message,
     get_next_input,
     mic_start_requested,
+    speech_enabled,
 )
 
 
@@ -66,8 +67,9 @@ def main():
         add_message("jarvis", reply)
         print(f"Jarvis: {reply}\n")
 
-        set_status("speaking")
-        speak(reply)
+        if speech_enabled():
+            set_status("speaking")
+            speak(reply)
         set_status("standby")
 
 

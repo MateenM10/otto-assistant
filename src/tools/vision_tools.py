@@ -1,8 +1,13 @@
 import subprocess
+import time
+
 import pytesseract
 from PIL import Image
 
+from ..hud_server import set_status
+
 SCREENSHOT_PATH = "last_screenshot.png"
+CAPTURE_DELAY_SECONDS = 3
 
 # Returns a flat list: name1, x1, y1, w1, h1, name2, x2, y2, w2, h2, ...
 _BOUNDS_SCRIPT = (
@@ -53,16 +58,38 @@ def _get_active_window_bounds():
 
 
 def _preprocess_for_ocr(image: Image.Image) -> Image.Image:
-    """Grayscale + 2x upscale, no thresholding.
-
-    Tested four variants (raw, threshold, grayscale-only, inverted) on
-    a dark-theme VS Code window. Thresholding performed WORST — it
-    destroys the anti-aliased edges Tesseract uses to identify letter
-    shapes on screen text. Grayscale + upscale performed best.
-    """
+    """Grayscale + 2x upscale. No thresholding — see module docstring."""
     gray = image.convert("L")
     width, height = gray.size
     return gray.resize((width * 2, height * 2), Image.LANCZOS)
+
+
+def _clean_ocr_text(text: str) -> str:
+    """Strip the noise OCR produces from icons, borders, and UI chrome.
+
+    Tesseract emits short garbage fragments for anything that isn't
+    real text — decorative graphics, toolbar icons, window borders.
+    Filtering here is more reliable than asking the model to ignore
+    them, which it doesn't consistently do.
+    """
+    kept = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        # Drop very short fragments unless they're plausible words/numbers
+        if len(line) <= 3 and not line.isalnum():
+            continue
+
+        # Drop lines that are mostly punctuation/symbols rather than letters
+        letters = sum(c.isalnum() or c.isspace() for c in line)
+        if letters / len(line) < 0.6:
+            continue
+
+        kept.append(line)
+
+    return "\n".join(kept)
 
 
 def read_screen(reason: str = "") -> str:
@@ -70,11 +97,21 @@ def read_screen(reason: str = "") -> str:
     'reason' is unused — it exists only because local models seem to
     invoke tools more reliably when there's at least one parameter."""
     try:
+        # Give the user time to click onto whatever they want read,
+        # since using the HUD makes the browser frontmost.
+        set_status(
+            "reading screen",
+            f"switch windows now — capturing in {CAPTURE_DELAY_SECONDS}s",
+        )
+        time.sleep(CAPTURE_DELAY_SECONDS)
+
         bounds = _get_active_window_bounds()
 
         if bounds:
             x, y, w, h = bounds
-            capture_args = ["screencapture", "-o", "-x", "-R", f"{x},{y},{w},{h}", SCREENSHOT_PATH]
+            capture_args = [
+                "screencapture", "-o", "-x", "-R", f"{x},{y},{w},{h}", SCREENSHOT_PATH
+            ]
         else:
             # Fall back to full screen if window detection failed
             capture_args = ["screencapture", "-o", "-x", SCREENSHOT_PATH]
@@ -85,7 +122,7 @@ def read_screen(reason: str = "") -> str:
 
         image = Image.open(SCREENSHOT_PATH)
         cleaned = _preprocess_for_ocr(image)
-        text = pytesseract.image_to_string(cleaned).strip()
+        text = _clean_ocr_text(pytesseract.image_to_string(cleaned))
         return text if text else "(no readable text detected on screen)"
     except Exception as e:
         return f"Error reading screen: {e}"

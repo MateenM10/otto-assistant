@@ -187,7 +187,7 @@
 
   #input::placeholder { color: var(--glow-dim); opacity: 0.7; }
 
-  #mic {
+  #mic, #speech {
     background: rgba(53, 224, 240, 0.05);
     border: 1px solid var(--glow-dim);
     border-radius: 50%;
@@ -200,7 +200,10 @@
     transition: all 0.2s;
   }
 
-  #mic:hover { border-color: var(--glow); }
+  #mic:hover, #speech:hover { border-color: var(--glow); }
+
+  /* Dimmed when spoken replies are off */
+  #speech.off { opacity: 0.35; }
 
   #mic.recording {
     background: rgba(255, 107, 107, 0.15);
@@ -349,6 +352,7 @@
 
   <div class="input-bar">
     <input id="input" type="text" placeholder="Type a message and press Enter…" autocomplete="off">
+    <button id="speech" title="Toggle spoken replies">🔊</button>
     <button id="mic" title="Click to start talking, click again to stop">●</button>
   </div>
 
@@ -367,6 +371,7 @@
   <script>
     const input = document.getElementById("input");
     const mic = document.getElementById("mic");
+    const speechBtn = document.getElementById("speech");
     const permissionEl = document.getElementById("permission");
     let recording = false;
 
@@ -402,6 +407,10 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action })
       });
+    });
+
+    speechBtn.addEventListener("click", async () => {
+      await fetch("/speech", { method: "POST" });
     });
 
     async function decide(decision) {
@@ -479,10 +488,12 @@
         document.getElementById("status").textContent =
           data.detail ? `${data.status} — ${data.detail}` : data.status;
 
-        // Keep the button in sync with Python's actual recording state,
+        // Keep the buttons in sync with Python's actual state,
         // in case they drift (e.g. a recording ended on its own).
         recording = data.recording;
         mic.classList.toggle("recording", data.recording);
+        speechBtn.classList.toggle("off", !data.speech);
+        speechBtn.textContent = data.speech ? "🔊" : "🔇";
 
         renderPermission(data.pending);
         renderEvents(data.events);
