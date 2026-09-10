@@ -6,6 +6,7 @@ from .audit import log_tool_call
 from .hud_server import set_status, add_event, request_permission
 from .memory import format_for_prompt
 from .backends.llm import build_backend
+from . import guards
 
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
@@ -20,8 +21,12 @@ actually run it using your tools and give them the real answer.
 
 For any calculation, data processing, parsing, or task where a few lines
 of code would be more reliable than working it out in your head, use the
-run_python tool. It cannot write files, run programs, or access the
-network — use write_file or run_shell_command for those instead.
+run_python tool.
+
+Some operations are blocked for safety — deleting files, moving files,
+installing packages, running sudo, and similar. If a tool refuses, do not
+try to achieve the same thing with a different tool. Tell the user what
+you wanted to do and let them run it themselves.
 
 If the user asks what's on their screen, what they're looking at, or
 to read/summarize something currently displayed, use the read_screen
@@ -43,13 +48,14 @@ than guessing.
 
 When the user tells you something worth remembering long-term (their
 name, preferences, what they're working on), use the remember tool to
-store it."""
+store it.
+
+Reply in plain text. Do not use markdown formatting, asterisks for bold,
+or LaTeX notation — your replies are displayed as raw text and read
+aloud."""
 
 
 def _to_openai_tool(schema: dict) -> dict:
-    """Our tool files describe tools in Claude's shape. Both Ollama and
-    Groq expect OpenAI's shape, so we convert here in one place instead
-    of rewriting every tool file."""
     return {
         "type": "function",
         "function": {
@@ -62,8 +68,6 @@ def _to_openai_tool(schema: dict) -> dict:
 
 class Assistant:
     def __init__(self):
-        # Append anything we've learned in previous sessions to the
-        # system prompt, so memory is available from the first message.
         system_prompt = SYSTEM_PROMPT + format_for_prompt()
         self.messages = [{"role": "system", "content": system_prompt}]
         self.tools = [_to_openai_tool(s) for s in TOOL_SCHEMAS]
@@ -86,7 +90,6 @@ class Assistant:
             message = self.backend.chat(self.messages, self.tools)
 
             if message.get("tool_calls"):
-                # Real, properly-formatted tool call from the API
                 self.messages.append(message)
                 for tool_call in message["tool_calls"]:
                     name = tool_call["function"]["name"]
@@ -99,7 +102,7 @@ class Assistant:
                         }
                     )
                 set_status("thinking")
-                continue  # loop back around with the real tool result
+                continue
 
             reply = message.get("content") or ""
 
@@ -113,17 +116,16 @@ class Assistant:
                     {"role": "user", "content": f"[Recovered tool call result]: {result}"}
                 )
                 set_status("thinking")
-                continue  # loop back so the model can answer using the real result
+                continue
 
             self.messages.append({"role": "assistant", "content": reply})
             set_status("standby")
             return reply
 
     def _try_parse_fake_tool_call(self, text: str):
-        """Detect a model outputting a tool call as plain text instead
-        of a real tool call, and recover it. Deliberately lenient: the
-        malformed JSON we saw in testing (broken braces) would fail a
-        strict parse, so we extract the tool name by pattern first."""
+        """Deliberately lenient: the malformed JSON seen in testing
+        (broken braces) would fail a strict parse, so we extract the
+        tool name by pattern first."""
         name_match = re.search(r'"name"\s*:\s*"(\w+)"', text)
         if not name_match:
             return None
@@ -132,8 +134,6 @@ class Assistant:
         if name not in TOOL_FUNCTIONS:
             return None
 
-        # Try to recover arguments if they happen to be valid JSON,
-        # but don't fail the whole thing if they aren't.
         params = {}
         json_match = re.search(r'\{.*\}', text, re.DOTALL)
         if json_match:
@@ -163,8 +163,15 @@ class Assistant:
         else:
             args = raw_arguments or {}
 
-        # --- Centralized permission check ---
-        trust_level = TOOL_TRUST.get(name, "confirm")  # unknown tools default to safe-side: confirm
+        # Guard check runs BEFORE the permission prompt, so blocked
+        # operations never reach the user as something to approve.
+        refusal = guards.check(name, args)
+        if refusal:
+            log_tool_call(name, args, refusal, allowed=False)
+            add_event(name, args, "denied")
+            return refusal
+
+        trust_level = TOOL_TRUST.get(name, "confirm")
 
         if trust_level == "confirm":
             if self.dry_run:
