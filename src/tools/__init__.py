@@ -13,9 +13,11 @@ from .file_tools import (
     read_file,
     list_directory,
     write_file,
+    delete_file,
     READ_FILE_SCHEMA,
     LIST_DIRECTORY_SCHEMA,
     WRITE_FILE_SCHEMA,
+    DELETE_FILE_SCHEMA,
 )
 from .shell_tools import (
     run_shell_command,
@@ -28,6 +30,7 @@ TOOL_FUNCTIONS = {
     "read_file": read_file,
     "list_directory": list_directory,
     "write_file": write_file,
+    "delete_file": delete_file,
     "run_shell_command": run_shell_command,
     "run_python": run_python,
     "get_current_datetime": get_current_datetime,
@@ -42,6 +45,7 @@ TOOL_SCHEMAS = [
     READ_FILE_SCHEMA,
     LIST_DIRECTORY_SCHEMA,
     WRITE_FILE_SCHEMA,
+    DELETE_FILE_SCHEMA,
     RUN_SHELL_COMMAND_SCHEMA,
     RUN_PYTHON_SCHEMA,
     GET_CURRENT_DATETIME_SCHEMA,
@@ -53,12 +57,12 @@ TOOL_SCHEMAS = [
 ]
 
 # "safe" tools run instantly, "confirm" tools always ask the user first.
-# This is the ONE place that decides which is which — individual tool
-# files no longer handle their own confirmation.
+# This is the ONE place that decides which is which.
 TOOL_TRUST = {
     "read_file": "safe",
     "list_directory": "safe",
     "write_file": "confirm",
+    "delete_file": "confirm",
     "run_shell_command": "confirm",
     "run_python": "confirm",
     "get_current_datetime": "safe",

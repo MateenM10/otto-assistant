@@ -1,6 +1,7 @@
 import json
 import re
 
+from .scope import describe_scope
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS, TOOL_TRUST
 from .audit import log_tool_call
 from .hud_server import set_status, add_event, request_permission
@@ -10,23 +11,34 @@ from . import guards
 
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
-directories, write files, run shell commands, run Python code, check the
-current date and time, read the text visible on the user's screen, search
-the web, and remember things about the user across sessions.
+directories, create and edit files, delete files, run shell commands, run
+Python code, check the current date and time, read the text visible on the
+user's screen, search the web, and remember things about the user across
+sessions.
 
 IMPORTANT: When the user asks about files, directories, or anything
 you could check with a tool, you MUST call the tool yourself and use
 its real result. Never just explain what command they could run —
 actually run it using your tools and give them the real answer.
 
+You can create, edit, and delete files using the write_file and
+delete_file tools, but only inside these directories:
+{writable_dirs}
+
+Deleted files go to the Trash and can be recovered. To edit a file, read
+it first, then write back the complete modified contents. Do not use
+shell commands or Python to modify files — use the dedicated tools, which
+are scoped to safe directories and show the user exactly what will happen
+before it happens.
+
 For any calculation, data processing, parsing, or task where a few lines
 of code would be more reliable than working it out in your head, use the
 run_python tool.
 
-Some operations are blocked for safety — deleting files, moving files,
-installing packages, running sudo, and similar. If a tool refuses, do not
-try to achieve the same thing with a different tool. Tell the user what
-you wanted to do and let them run it themselves.
+Some operations are blocked outright — sudo, disk formatting, shutting
+down the machine, and similar. If a tool refuses, do not try to achieve
+the same thing with a different tool. Tell the user what you wanted to do
+and let them run it themselves.
 
 If the user asks what's on their screen, what they're looking at, or
 to read/summarize something currently displayed, use the read_screen
@@ -68,7 +80,8 @@ def _to_openai_tool(schema: dict) -> dict:
 
 class Assistant:
     def __init__(self):
-        system_prompt = SYSTEM_PROMPT + format_for_prompt()
+        system_prompt = SYSTEM_PROMPT.format(writable_dirs=describe_scope())
+        system_prompt += format_for_prompt()
         self.messages = [{"role": "system", "content": system_prompt}]
         self.tools = [_to_openai_tool(s) for s in TOOL_SCHEMAS]
         self.dry_run = False
