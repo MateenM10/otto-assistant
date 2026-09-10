@@ -1,17 +1,32 @@
 import queue
+import threading
 
 from src.assistant import Assistant
 from src.speech import speak
 from src.voice import listen
+from src.memory import extract_facts
 from src.hud_server import (
     start_hud_server,
     set_status,
     set_recording,
     add_message,
+    add_event,
     get_next_input,
     mic_start_requested,
     speech_enabled,
 )
+
+
+def _extract_in_background(assistant, user_input: str, reply: str) -> None:
+    """Run memory extraction off the main thread. Failures are silent —
+    memory is a nice-to-have, never a reason to interrupt the user."""
+    try:
+        new_facts = extract_facts(assistant.backend, user_input, reply)
+        for fact in new_facts:
+            print(f"[memory] learned: {fact}")
+            add_event("remember", {"fact": fact}, "allowed")
+    except Exception:
+        pass
 
 
 def main():
@@ -31,7 +46,6 @@ def main():
     while True:
         user_input = None
 
-        # Check for a mic press first, then fall back to typed input.
         if mic_start_requested():
             set_status("listening")
             set_recording(True)
@@ -44,7 +58,7 @@ def main():
             try:
                 user_input = get_next_input(timeout=0.2)
             except queue.Empty:
-                continue  # nothing yet; loop so Ctrl+C stays responsive
+                continue
             except KeyboardInterrupt:
                 print("\nGoodbye.")
                 break
@@ -66,6 +80,12 @@ def main():
         reply = assistant.send(user_input)
         add_message("jarvis", reply)
         print(f"Jarvis: {reply}\n")
+
+        threading.Thread(
+            target=_extract_in_background,
+            args=(assistant, user_input, reply),
+            daemon=True,
+        ).start()
 
         if speech_enabled():
             set_status("speaking")
