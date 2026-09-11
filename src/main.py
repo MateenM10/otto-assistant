@@ -9,6 +9,7 @@ from src.hud_server import (
     start_hud_server,
     set_status,
     set_recording,
+    set_streaming,
     add_message,
     add_event,
     get_next_input,
@@ -78,7 +79,11 @@ def main():
         print(f"You: {user_input}")
 
         reply = assistant.send(user_input)
+
+        # Add the finished reply, then clear the live streaming text —
+        # this order avoids a flicker where neither is on screen.
         add_message("jarvis", reply)
+        set_streaming("")
         print(f"Jarvis: {reply}\n")
 
         threading.Thread(

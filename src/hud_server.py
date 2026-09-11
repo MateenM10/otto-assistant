@@ -14,6 +14,7 @@ _state = {
     "recording": False,
     "pending": None,
     "speech": True,
+    "streaming": "",
 }
 _events = []         # newest first
 _messages = []       # oldest first, like a chat log
@@ -33,20 +34,23 @@ _decision_made = threading.Event()
 
 
 def set_status(status: str, detail: str = "") -> None:
-    """Update what the HUD's centre display shows."""
     with _lock:
         _state["status"] = status
         _state["detail"] = detail
 
 
 def set_recording(is_recording: bool) -> None:
-    """Tell the HUD whether the mic is currently live."""
     with _lock:
         _state["recording"] = is_recording
 
 
+def set_streaming(text: str) -> None:
+    """Partial reply text, shown live while the model is still writing."""
+    with _lock:
+        _state["streaming"] = text
+
+
 def toggle_speech() -> bool:
-    """Flip spoken replies on/off. Returns the new state."""
     with _lock:
         _state["speech"] = not _state["speech"]
         return _state["speech"]
@@ -58,10 +62,7 @@ def speech_enabled() -> bool:
 
 
 def add_event(tool: str, args: dict, outcome: str) -> None:
-    """Record a tool call for the HUD's activity feed.
-
-    outcome is one of: "allowed", "denied", "dry-run", "error".
-    """
+    """outcome is one of: allowed, denied, dry-run, error."""
     with _lock:
         _events.insert(
             0,
@@ -76,7 +77,6 @@ def add_event(tool: str, args: dict, outcome: str) -> None:
 
 
 def add_message(role: str, text: str) -> None:
-    """Add a turn to the conversation shown in the HUD."""
     with _lock:
         _messages.append({"role": role, "text": text})
         del _messages[:-MAX_MESSAGES]
@@ -92,7 +92,6 @@ def get_next_input(timeout: float = 0.5) -> str:
 
 
 def mic_start_requested() -> bool:
-    """True if the mic button was pressed since the last check."""
     if _mic_start.is_set():
         _mic_start.clear()
         return True
@@ -100,12 +99,9 @@ def mic_start_requested() -> bool:
 
 
 def request_permission(tool: str, args: dict, timeout: float = 120.0) -> bool:
-    """Ask the user via the HUD whether to run a tool. Blocks until
-    they answer or the request times out.
-
-    Returns True if allowed, False if denied or timed out. Timing out
-    denies rather than allows — failing closed is the safe default for
-    a permission system.
+    """Ask the user via the HUD whether to run a tool. Blocks until they
+    answer or it times out. Timing out denies rather than allows —
+    failing closed is the safe default for a permission system.
     """
     global _decision
 
@@ -126,7 +122,6 @@ def request_permission(tool: str, args: dict, timeout: float = 120.0) -> bool:
 
 
 def resolve_permission(decision: str) -> None:
-    """Called by the server thread when the user clicks Allow/Deny."""
     global _decision
     _decision = decision
     _decision_made.set()

@@ -1,12 +1,12 @@
 import json
 import re
 
-from .scope import describe_scope
 from .tools import TOOL_FUNCTIONS, TOOL_SCHEMAS, TOOL_TRUST
 from .audit import log_tool_call
-from .hud_server import set_status, add_event, request_permission
+from .hud_server import set_status, add_event, request_permission, set_streaming
 from .memory import format_for_prompt
 from .backends.llm import build_backend
+from .scope import describe_scope
 from . import guards
 
 SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
@@ -100,9 +100,14 @@ class Assistant:
         set_status("thinking")
 
         while True:
-            message = self.backend.chat(self.messages, self.tools)
+            # Passing set_streaming turns on streaming — text appears in
+            # the HUD as it's generated rather than all at once.
+            message = self.backend.chat(
+                self.messages, self.tools, on_text=set_streaming
+            )
 
             if message.get("tool_calls"):
+                set_streaming("")
                 self.messages.append(message)
                 for tool_call in message["tool_calls"]:
                     name = tool_call["function"]["name"]
@@ -122,6 +127,7 @@ class Assistant:
             # Safety net: smaller models sometimes fake a tool call as plain text
             fake_call = self._try_parse_fake_tool_call(reply)
             if fake_call:
+                set_streaming("")
                 name, params = fake_call
                 result = self._run_tool(name, params)
                 self.messages.append({"role": "assistant", "content": reply})

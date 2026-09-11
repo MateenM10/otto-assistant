@@ -26,7 +26,6 @@
     padding: 30px;
   }
 
-  /* --- Reactor --- */
   .reactor {
     position: relative;
     width: 420px;
@@ -86,7 +85,6 @@
     50%      { opacity: 0.9; }
   }
 
-  /* --- Side panels --- */
   .panel {
     grid-row: 1;
     align-self: center;
@@ -119,7 +117,6 @@
 
   .panel-empty { color: var(--glow-dim); opacity: 0.5; }
 
-  /* --- Conversation --- */
   .turn { margin-bottom: 12px; }
 
   .turn-role {
@@ -134,7 +131,18 @@
   .turn.jarvis .turn-text { color: var(--glow); }
   .turn.system .turn-text { color: #ffd166; }
 
-  /* --- Tool activity --- */
+  /* Blinking cursor on the reply still being written */
+  .turn.streaming .turn-text::after {
+    content: "▍";
+    animation: blink 1s step-end infinite;
+    opacity: 0.8;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 0.8; }
+    50%      { opacity: 0; }
+  }
+
   .event {
     display: flex;
     gap: 8px;
@@ -159,7 +167,6 @@
     white-space: nowrap;
   }
 
-  /* --- Input bar --- */
   .input-bar {
     grid-column: 2;
     grid-row: 2;
@@ -202,7 +209,6 @@
 
   #mic:hover, #speech:hover { border-color: var(--glow); }
 
-  /* Dimmed when spoken replies are off */
   #speech.off { opacity: 0.35; }
 
   #mic.recording {
@@ -217,7 +223,6 @@
     50%      { box-shadow: 0 0 0 10px rgba(255, 107, 107, 0); }
   }
 
-  /* --- Permission prompt --- */
   .permission {
     position: fixed;
     inset: 0;
@@ -457,26 +462,41 @@
       `).join("");
     }
 
-    let lastMessageCount = 0;
+    let lastRenderKey = "";
 
-    function renderMessages(messages) {
+    function renderMessages(messages, streaming) {
       const container = document.getElementById("messages");
-      if (!messages || messages.length === 0) {
+
+      if ((!messages || messages.length === 0) && !streaming) {
         container.innerHTML = '<div class="panel-empty">say something</div>';
         return;
       }
-      container.innerHTML = messages.map(m => `
+
+      let html = (messages || []).map(m => `
         <div class="turn ${m.role}">
           <div class="turn-role">${escapeHtml(m.role)}</div>
           <div class="turn-text">${escapeHtml(m.text)}</div>
         </div>
       `).join("");
 
-      // Only auto-scroll when something new arrived, so the user can
-      // scroll back through history without being yanked to the bottom.
-      if (messages.length !== lastMessageCount) {
+      // The reply currently being written, shown with a blinking cursor
+      if (streaming) {
+        html += `
+          <div class="turn jarvis streaming">
+            <div class="turn-role">jarvis</div>
+            <div class="turn-text">${escapeHtml(streaming)}</div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+
+      // Scroll whenever the content actually changed, so streaming text
+      // stays in view without yanking the user around otherwise.
+      const key = `${(messages || []).length}:${streaming.length}`;
+      if (key !== lastRenderKey) {
         container.scrollTop = container.scrollHeight;
-        lastMessageCount = messages.length;
+        lastRenderKey = key;
       }
     }
 
@@ -497,13 +517,13 @@
 
         renderPermission(data.pending);
         renderEvents(data.events);
-        renderMessages(data.messages);
+        renderMessages(data.messages, data.streaming || "");
       } catch (e) {
         document.getElementById("status").textContent = "disconnected";
       }
     }
 
-    setInterval(poll, 300);
+    setInterval(poll, 60);
     poll();
     input.focus();
   </script>
