@@ -9,7 +9,7 @@ from .backends.llm import build_backend
 from .scope import describe_scope
 from . import guards
 
-SYSTEM_PROMPT = """You are Jarvis, a personal assistant that helps the user
+SYSTEM_PROMPT = """You are Otto, a personal assistant that helps the user
 with tasks on their computer. You have tools to read files, list
 directories, create and edit files, delete files, run shell commands, run
 Python code, check the current date and time, read the text visible on the

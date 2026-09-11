@@ -32,7 +32,7 @@ def _extract_in_background(assistant, user_input: str, reply: str) -> None:
 
 def main():
     url = start_hud_server()
-    print("Jarvis running.")
+    print("Otto running.")
     print(f"Open the HUD at {url}")
 
     try:
@@ -82,9 +82,9 @@ def main():
 
         # Add the finished reply, then clear the live streaming text —
         # this order avoids a flicker where neither is on screen.
-        add_message("jarvis", reply)
+        add_message("otto", reply)
         set_streaming("")
-        print(f"Jarvis: {reply}\n")
+        print(f"Otto: {reply}\n")
 
         threading.Thread(
             target=_extract_in_background,

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>JARVIS</title>
+<title>OTTO</title>
 <style>
   :root {
     --glow: #35e0f0;
@@ -128,7 +128,7 @@
   }
 
   .turn-text { color: #cfefff; white-space: pre-wrap; }
-  .turn.jarvis .turn-text { color: var(--glow); }
+  .turn.otto .turn-text { color: var(--glow); }
   .turn.system .turn-text { color: #ffd166; }
 
   /* Blinking cursor on the reply still being written */
@@ -342,7 +342,7 @@
     </svg>
 
     <div class="core">
-      <div class="label">JARVIS</div>
+      <div class="label">OTTO</div>
       <div class="status" id="status">standby</div>
     </div>
 
@@ -482,8 +482,8 @@
       // The reply currently being written, shown with a blinking cursor
       if (streaming) {
         html += `
-          <div class="turn jarvis streaming">
-            <div class="turn-role">jarvis</div>
+          <div class="turn otto streaming">
+            <div class="turn-role">otto</div>
             <div class="turn-text">${escapeHtml(streaming)}</div>
           </div>
         `;
