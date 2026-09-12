@@ -19,11 +19,16 @@
     color: var(--glow);
     overflow: hidden;
     display: grid;
-    grid-template-columns: 1fr 460px 1fr;
+    /* Fixed side panels so they don't sprawl on wide screens; the
+       reactor centres itself in whatever space is left. */
+    grid-template-columns: 360px 1fr 360px;
     grid-template-rows: 1fr auto;
     align-items: center;
-    gap: 20px;
+    justify-items: center;
+    gap: 24px;
     padding: 30px;
+    max-width: 1600px;
+    margin: 0 auto;
   }
 
   .reactor {
@@ -32,7 +37,6 @@
     height: 420px;
     grid-column: 2;
     grid-row: 1;
-    justify-self: center;
   }
 
   .reactor svg {
@@ -88,6 +92,8 @@
   .panel {
     grid-row: 1;
     align-self: center;
+    justify-self: stretch;
+    width: 100%;
     max-height: 70vh;
     display: flex;
     flex-direction: column;
@@ -173,6 +179,8 @@
     display: flex;
     gap: 10px;
     align-items: center;
+    width: 100%;
+    max-width: 460px;
   }
 
   #input {
@@ -523,7 +531,7 @@
       }
     }
 
-    setInterval(poll, 60);
+    setInterval(poll, 300);
     poll();
     input.focus();
   </script>
