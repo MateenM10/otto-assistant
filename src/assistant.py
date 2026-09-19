@@ -80,6 +80,11 @@ Reply in plain text. Do not use markdown formatting, asterisks for bold,
 or LaTeX notation — your replies are displayed as raw text and read
 aloud."""
 
+# Tool results can be large (search_web dumps whole pages of Tavily
+# text). The full result is still logged and returned to the caller;
+# this only caps what gets resent to the model on every later turn.
+MAX_TOOL_RESULT_CHARS = 4000
+
 
 def _to_openai_tool(schema: dict) -> dict:
     return {
@@ -130,7 +135,7 @@ class Assistant:
                         {
                             "role": "tool",
                             "tool_call_id": tool_call["id"],
-                            "content": result,
+                            "content": self._truncate_for_history(name, result),
                         }
                     )
                 set_status("thinking")
@@ -146,7 +151,10 @@ class Assistant:
                 result = self._run_tool(name, params)
                 self.messages.append({"role": "assistant", "content": reply})
                 self.messages.append(
-                    {"role": "user", "content": f"[Recovered tool call result]: {result}"}
+                    {
+                        "role": "user",
+                        "content": f"[Recovered tool call result]: {self._truncate_for_history(name, result)}",
+                    }
                 )
                 set_status("thinking")
                 continue
@@ -154,6 +162,30 @@ class Assistant:
             self.messages.append({"role": "assistant", "content": reply})
             set_status("standby")
             return reply
+
+    def _truncate_for_history(self, name: str, result: str) -> str:
+        """Caps what gets resent to the model on every subsequent turn.
+        The full result already went to the caller and the audit log
+        unmodified — this only shrinks the copy that lives in
+        self.messages."""
+        if len(result) <= MAX_TOOL_RESULT_CHARS:
+            return result
+
+        omitted = len(result) - MAX_TOOL_RESULT_CHARS
+        kept = result[:MAX_TOOL_RESULT_CHARS]
+
+        log_tool_call(
+            "_trim_tool_result",
+            {"tool": name, "original_chars": len(result)},
+            f"kept {MAX_TOOL_RESULT_CHARS} chars, omitted {omitted}",
+            allowed=True,
+        )
+
+        return (
+            kept
+            + f"\n\n[Truncated for context size: {omitted} more characters "
+            "omitted. The full result was available when this tool ran.]"
+        )
 
     def _try_parse_fake_tool_call(self, text: str):
         """Deliberately lenient: the malformed JSON seen in testing
